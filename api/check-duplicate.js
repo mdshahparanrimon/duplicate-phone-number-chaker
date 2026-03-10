@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ message: "Missing x-api-key header" });
   }
 
-  const { phone, contactId, locationId } = req.body;
+  const { id, name, email, phone } = req.body;
 
   if (!phone) {
     return res.status(400).json({ message: "Missing required field: phone" });
@@ -18,7 +18,6 @@ export default async function handler(req, res) {
 
   // Build search URL — encode the phone number to prevent injection
   const params = new URLSearchParams({ phone });
-  if (locationId) params.set("locationId", locationId);
 
   let data;
   try {
@@ -53,7 +52,9 @@ export default async function handler(req, res) {
 
   return res.status(200).json({
     status,
-    contactId: contactId ?? null,
+    id: id ?? null,
+    name: name ?? null,
+    email: email ?? null,
     phone,
     matchCount: contacts.length
   });
