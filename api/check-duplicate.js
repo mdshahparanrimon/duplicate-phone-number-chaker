@@ -4,30 +4,38 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: "Method not allowed" });
   }
 
-  // GHL API key must be passed by the caller via the x-api-key header
-  const ghlApiKey = req.headers["x-api-key"];
-  if (!ghlApiKey) {
-    return res.status(401).json({ message: "Missing x-api-key header" });
+  // x-api-key is your own custom key — validated against API_SECRET_KEY in .env
+  const callerKey = req.headers["x-api-key"];
+  if (!callerKey || callerKey !== process.env.API_SECRET_KEY) {
+    return res.status(401).json({ message: "Unauthorized: invalid x-api-key" });
   }
 
-  const { id, name, email, phone } = req.body;
+  const { id, name, email, phone, locationId } = req.body;
 
   if (!phone) {
     return res.status(400).json({ message: "Missing required field: phone" });
   }
 
-  // Build search URL — encode the phone number to prevent injection
-  const params = new URLSearchParams({ phone });
+  if (!locationId) {
+    return res.status(400).json({ message: "Missing required field: locationId" });
+  }
+
+  // GHL API key passed by the caller in the x-ghl-api-key header
+  const ghlApiKey = req.headers["x-ghl-api-key"];
+  if (!ghlApiKey) {
+    return res.status(401).json({ message: "Missing x-ghl-api-key header" });
+  }
+
+  const params = new URLSearchParams({ locationId, number: phone });
 
   let data;
   try {
     const response = await fetch(
-      `https://services.leadconnectorhq.com/contacts/search?${params.toString()}`,
+      `https://services.leadconnectorhq.com/contacts/search/duplicate?${params.toString()}`,
       {
         headers: {
           Authorization: `Bearer ${ghlApiKey}`,
-          Version: "2021-07-28",
-          "Content-Type": "application/json"
+          Version: "2021-07-28"
         }
       }
     );
@@ -44,19 +52,15 @@ export default async function handler(req, res) {
     return res.status(502).json({ message: "Network error while contacting GHL API" });
   }
 
-  const contacts = data.contacts ?? [];
-
-  // More than one contact sharing the same phone number means a duplicate exists.
-  // (The contact itself counts as one hit, so > 1 means another contact also has this number.)
-  const status = contacts.length > 1 ? "duplicate" : "unique";
+  // GHL returns the duplicate contact object if one exists, null otherwise
+  const status = data.contact ? "duplicate" : "unique";
 
   return res.status(200).json({
     status,
     id: id ?? null,
     name: name ?? null,
     email: email ?? null,
-    phone,
-    matchCount: contacts.length
+    phone
   });
 
 }
