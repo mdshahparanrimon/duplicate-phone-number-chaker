@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ message: "Unauthorized: invalid x-api-key" });
   }
 
-  const { phone } = req.body;
+  const { id, name, email, phone } = req.body;
 
   if (!phone) {
     return res.status(400).json({ message: "Missing required field: phone" });
