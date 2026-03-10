@@ -29,7 +29,7 @@ export default async function handler(req, res) {
   let data;
   try {
     const response = await fetch(
-      `https://services.leadconnectorhq.com/contacts/search?${params.toString()}`,
+      `https://services.leadconnectorhq.com/contacts/search/duplicate?${params.toString()}`,
       {
         headers: {
           Authorization: `Bearer ${ghlApiKey}`,
