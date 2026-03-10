@@ -10,15 +10,13 @@ export default async function handler(req, res) {
     return res.status(401).json({ message: "Unauthorized: invalid x-api-key" });
   }
 
-  const { id, name, email, phone, locationId } = req.body;
+  const { id, name, email, phone } = req.body;
 
   if (!phone) {
     return res.status(400).json({ message: "Missing required field: phone" });
   }
 
-  if (!locationId) {
-    return res.status(400).json({ message: "Missing required field: locationId" });
-  }
+  const locationId = process.env.GHL_LOCATION_ID;
 
   // GHL API key passed by the caller in the x-ghl-api-key header
   const ghlApiKey = req.headers["x-ghl-api-key"];
