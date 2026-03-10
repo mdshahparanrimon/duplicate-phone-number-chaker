@@ -29,12 +29,27 @@ export default async function handler(req, res) {
   let data;
   try {
     const response = await fetch(
-      `https://services.leadconnectorhq.com/contacts/search/duplicate?${params.toString()}`,
+      "https://services.leadconnectorhq.com/contacts/search",
       {
+        method: "POST",
         headers: {
           Authorization: `Bearer ${ghlApiKey}`,
-          Version: "2021-07-28"
-        }
+          Version: "2021-07-28",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          locationId,
+          page: 1,
+          pageLimit: 10,
+          filters: [
+            {
+              group: "AND",
+              filters: [
+                { field: "phone", operator: "eq", value: phone }
+              ]
+            }
+          ]
+        })
       }
     );
 
@@ -50,7 +65,7 @@ export default async function handler(req, res) {
     return res.status(502).json({ message: "Network error while contacting GHL API" });
   }
 
-  // GHL returns the duplicate contact object if one exists, null otherwise
+  // More than 1 contact with the same phone = duplicate
   const contacts = data.contacts ?? [];
   const status = contacts.length > 1 ? "duplicate" : "unique";
 
