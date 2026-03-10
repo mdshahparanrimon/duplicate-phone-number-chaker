@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ message: "Unauthorized: invalid x-api-key" });
   }
 
-  const { id, name, email, phone } = req.body;
+  const { phone } = req.body;
 
   if (!phone) {
     return res.status(400).json({ message: "Missing required field: phone" });
@@ -53,12 +53,6 @@ export default async function handler(req, res) {
   // GHL returns the duplicate contact object if one exists, null otherwise
   const status = data.contact ? "duplicate" : "unique";
 
-  return res.status(200).json({
-    status,
-    id: id ?? null,
-    name: name ?? null,
-    email: email ?? null,
-    phone
-  });
+  return res.status(200).json({ status });
 
 }
