@@ -24,32 +24,17 @@ export default async function handler(req, res) {
     return res.status(401).json({ message: "Missing x-ghl-api-key header" });
   }
 
-  const params = new URLSearchParams({ locationId, query: phone });
 
   let data;
   try {
+    const params = new URLSearchParams({ locationId, number: phone });
     const response = await fetch(
-      "https://services.leadconnectorhq.com/contacts/search",
+      `https://services.leadconnectorhq.com/contacts/search/duplicate?${params.toString()}`,
       {
-        method: "POST",
         headers: {
           Authorization: `Bearer ${ghlApiKey}`,
-          Version: "2021-07-28",
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          locationId,
-          page: 1,
-          pageLimit: 10,
-          filters: [
-            {
-              group: "AND",
-              filters: [
-                { field: "phone", operator: "eq", value: phone }
-              ]
-            }
-          ]
-        })
+          Version: "2021-07-28"
+        }
       }
     );
 
@@ -65,9 +50,17 @@ export default async function handler(req, res) {
     return res.status(502).json({ message: "Network error while contacting GHL API" });
   }
 
-  // More than 1 contact with the same phone = duplicate
-  const contacts = data.contacts ?? [];
-  const status = contacts.length > 1 ? "duplicate" : "unique";
+  // No contact found at all → unique
+  // Found a contact with a DIFFERENT id → duplicate (another contact owns this number)
+  // Found the contact with the SAME id → unique (it found itself, no other duplicate)
+  let status;
+  if (!data.contact) {
+    status = "null";
+  } else if (data.contact.id === id) {
+    status = "unique";
+  } else {
+    status = "duplicate";
+  }
 
   return res.status(200).json({ status });
 
