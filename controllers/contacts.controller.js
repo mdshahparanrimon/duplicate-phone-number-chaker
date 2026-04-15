@@ -72,6 +72,63 @@ function deduplicateContacts(contacts) {
   return Array.from(contactMap.values());
 }
 
+function normalizeAddressValue(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function resolvePostalCode(record = {}) {
+  return normalizeAddressValue(
+    record.postalCode ||
+      record.postal_code ||
+      record.zipCode ||
+      record.zip ||
+      record.zipcode ||
+      record["Postal Code"]
+  );
+}
+
+function toAddressItem(record = {}) {
+  const item = {
+    streetaddress: normalizeAddressValue(record.address || record.address1),
+    city: normalizeAddressValue(record.city),
+    country: normalizeAddressValue(record.country),
+    state: normalizeAddressValue(record.state),
+    "Postal Code": resolvePostalCode(record)
+  };
+
+  if (!item.streetaddress && !item.city && !item.country && !item.state && !item["Postal Code"]) {
+    return null;
+  }
+
+  return item;
+}
+
+function deduplicateAddressItems(items) {
+  const addressMap = new Map();
+
+  for (const item of items) {
+    if (!item) {
+      continue;
+    }
+
+    const key = [
+      item.streetaddress,
+      item.city,
+      item.country,
+      item.state,
+      item["Postal Code"]
+    ]
+      .map((value) => normalizeAddressValue(value).toLowerCase())
+      .join("|");
+
+    if (!addressMap.has(key)) {
+      addressMap.set(key, item);
+    }
+  }
+
+  return Array.from(addressMap.values());
+}
+
 function resolveContextOrSendError(req, res) {
   const context = req.authContext || resolveAuthContextFromRequest(req, { allowBodyFallback: false });
   const authResult = validateRequestAuthContext(context);
@@ -150,7 +207,8 @@ export async function checkDuplicateBusinessController(req, res) {
       status: "null",
       count: 0,
       businessNameStatus: "null",
-      addressStatus: "null"
+      addressStatus: "null",
+      address: []
     });
   }
 
@@ -186,11 +244,20 @@ export async function checkDuplicateBusinessController(req, res) {
       ? (filteredAddressMatches.length > 0 ? "duplicate" : "unique")
       : "null";
 
+    const addressItems = shouldCheckAddress
+      ? deduplicateAddressItems(
+          (filteredAddressMatches.length > 0 ? filteredAddressMatches : [payload])
+            .map((item) => toAddressItem(item))
+            .filter(Boolean)
+        )
+      : [];
+
     return res.status(200).json({
       status: computeTopStatus([businessNameStatus, addressStatus]),
       count: allMatches.length,
       businessNameStatus,
-      addressStatus
+      addressStatus,
+      address: addressItems
     });
   } catch (error) {
     if (error instanceof GhlServiceError) {

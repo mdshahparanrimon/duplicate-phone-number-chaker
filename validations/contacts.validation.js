@@ -9,6 +9,9 @@ export function normalizeCheckDuplicateBusinessPayload(body = {}) {
     city: normalizeText(body.city),
     state: normalizeText(body.state),
     country: normalizeText(body.country),
+    postalCode: normalizeText(
+      body.postalCode || body.postal_code || body.zip || body.zipCode || body["Postal Code"]
+    ),
     id: normalizeText(body.id)
   };
 }

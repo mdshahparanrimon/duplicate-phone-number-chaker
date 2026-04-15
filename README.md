@@ -118,6 +118,7 @@ Request body:
   "city": "Austin",
   "state": "TX",
   "country": "US",
+  "postalCode": "92648",
   "id": "contact_123"
 }
 ```
@@ -138,6 +139,7 @@ Rules:
   - `country == country`
 - `id` is excluded (self-match filtering)
 - `count` is the merged unique duplicate contacts from businessName and/or address checks.
+- `address` is returned as an array after `addressStatus`.
 
 Response shape:
 
@@ -146,7 +148,16 @@ Response shape:
   "status": "duplicate",
   "count": 2,
   "businessNameStatus": "duplicate",
-  "addressStatus": "duplicate"
+  "addressStatus": "duplicate",
+  "address": [
+    {
+      "streetaddress": "19671 Beach Blvd., Suite 103",
+      "city": "Huntington Beach",
+      "country": "US",
+      "state": "CA",
+      "Postal Code": "92648"
+    }
+  ]
 }
 ```
 
