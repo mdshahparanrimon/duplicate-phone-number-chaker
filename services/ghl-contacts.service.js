@@ -86,6 +86,15 @@ function buildSearchPayload(criteria) {
   };
 }
 
+function buildGetAllContactsPayload(criteria) {
+  return {
+    locationId: criteria.locationId,
+    page: criteria.page,
+    pageLimit: criteria.pageLimit,
+    ...(criteria.query ? { query: criteria.query } : {})
+  };
+}
+
 export class GhlServiceError extends Error {
   constructor(message, statusCode = 502) {
     super(message);
@@ -239,6 +248,66 @@ export async function searchContactsByBusinessAddress(criteria) {
     }
 
     console.error("[duplicate-business] Unexpected GHL service error", {
+      locationId: criteria.locationId,
+      message: error.message
+    });
+
+    throw new GhlServiceError("Unexpected error while contacting GHL API", 500);
+  }
+}
+
+export async function getAllContacts(criteria) {
+  const payload = buildGetAllContactsPayload(criteria);
+  const endpoint = `${GHL_BASE_URL}/contacts/search`;
+
+  console.info("[get-all-contacts] GHL search request", {
+    locationId: criteria.locationId,
+    page: criteria.page,
+    pageLimit: criteria.pageLimit,
+    hasQuery: Boolean(criteria.query)
+  });
+
+  try {
+    const response = await axios.post(endpoint, payload, {
+      timeout: REQUEST_TIMEOUT_MS,
+      headers: {
+        Authorization: `Bearer ${criteria.apiKey}`,
+        Version: GHL_VERSION,
+        "Content-Type": "application/json"
+      }
+    });
+
+    const contacts = extractContacts(response.data);
+
+    return {
+      contacts,
+      meta: {
+        page: criteria.page,
+        pageLimit: criteria.pageLimit,
+        total: Number(response.data?.total || response.data?.meta?.total || contacts.length)
+      }
+    };
+  } catch (error) {
+    if (error.response) {
+      console.error("[get-all-contacts] GHL response error", {
+        status: error.response.status,
+        locationId: criteria.locationId,
+        message: toErrorMessage(error)
+      });
+
+      throw new GhlServiceError("Failed to fetch contacts from GHL", 502);
+    }
+
+    if (error.request) {
+      console.error("[get-all-contacts] GHL network error", {
+        locationId: criteria.locationId,
+        message: error.message
+      });
+
+      throw new GhlServiceError("Network error while contacting GHL API", 502);
+    }
+
+    console.error("[get-all-contacts] Unexpected GHL service error", {
       locationId: criteria.locationId,
       message: error.message
     });

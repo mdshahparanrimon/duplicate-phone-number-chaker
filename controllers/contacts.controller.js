@@ -44,7 +44,7 @@ function computeAndTopStatus(fieldStatuses) {
     return "null";
   }
 
-  if (fieldStatuses.every((status) => status === "duplicate")) {
+  if (fieldStatuses.includes("duplicate")) {
     return "duplicate";
   }
 
@@ -71,7 +71,7 @@ function deduplicateContacts(contacts) {
 }
 
 function resolveContextOrSendError(req, res) {
-  const context = resolveAuthContextFromRequest(req, { allowBodyFallback: true });
+  const context = req.authContext || resolveAuthContextFromRequest(req, { allowBodyFallback: false });
   const authResult = validateRequestAuthContext(context);
 
   if (!authResult.valid) {
@@ -85,7 +85,7 @@ function resolveContextOrSendError(req, res) {
 async function runPhoneEmailDuplicateCheck(req) {
   const payload = normalizeCheckDuplicatePhoneEmailPayload(req.body || {});
 
-  const context = resolveAuthContextFromRequest(req, { allowBodyFallback: true });
+  const context = req.authContext || resolveAuthContextFromRequest(req, { allowBodyFallback: false });
   const authResult = validateRequestAuthContext(context);
 
   if (!authResult.valid) {

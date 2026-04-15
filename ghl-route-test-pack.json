@@ -1,0 +1,94 @@
+{
+  "name": "ghl-full-system-route-test-pack",
+  "baseUrl": "https://YOUR_DOMAIN",
+  "requiredHeaders": [
+    "x-api-key",
+    "x-location-id",
+    "x-ghl-api-key",
+    "Content-Type"
+  ],
+  "defaultHeaders": {
+    "x-api-key": "YOUR_ACCESS_KEY",
+    "x-location-id": "YOUR_LOCATION_ID",
+    "x-ghl-api-key": "YOUR_GHL_API_KEY",
+    "Content-Type": "application/json"
+  },
+  "routes": [
+    {
+      "name": "duplicateContactPrimary",
+      "method": "POST",
+      "path": "/api/check-duplicate",
+      "body": {
+        "phone": "{{contact.phone}}",
+        "email": "{{contact.email}}",
+        "id": "{{contact.id}}"
+      },
+      "expected": {
+        "successStatusCodes": [200],
+        "requiredResponseKeys": ["status", "count", "matches"],
+        "optionalResponseKeys": ["phoneStatus", "emailStatus"]
+      }
+    },
+    {
+      "name": "duplicateContactSecondary",
+      "method": "POST",
+      "path": "/api/check-duplicate-contact",
+      "body": {
+        "phone": "{{contact.phone}}",
+        "email": "{{contact.email}}",
+        "id": "{{contact.id}}"
+      },
+      "expected": {
+        "successStatusCodes": [200],
+        "requiredResponseKeys": ["status", "count", "matches"],
+        "optionalResponseKeys": ["phoneStatus", "emailStatus"]
+      }
+    },
+    {
+      "name": "duplicateBusiness",
+      "method": "POST",
+      "path": "/api/check-duplicate-business",
+      "body": {
+        "businessName": "{{contact.company_name}}",
+        "address1": "{{contact.address1}}",
+        "city": "{{contact.city}}",
+        "state": "{{contact.state}}",
+        "country": "{{contact.country}}",
+        "id": "{{contact.id}}"
+      },
+      "expected": {
+        "successStatusCodes": [200],
+        "requiredResponseKeys": ["status"],
+        "optionalResponseKeys": ["count", "matches"]
+      }
+    },
+    {
+      "name": "getAllContacts",
+      "method": "POST",
+      "path": "/api/get-all-contacts",
+      "body": {
+        "page": 1,
+        "pageLimit": 50,
+        "query": ""
+      },
+      "expected": {
+        "successStatusCodes": [200],
+        "requiredResponseKeys": ["status", "count", "contacts", "page", "pageLimit", "total"]
+      }
+    }
+  ],
+  "negativeTests": [
+    {
+      "name": "missingLocationOrGhlKey",
+      "removeHeaders": ["x-location-id", "x-ghl-api-key"],
+      "expectedStatusCode": 400
+    },
+    {
+      "name": "invalidAccessKey",
+      "overrideHeaders": {
+        "x-api-key": "WRONG_KEY"
+      },
+      "expectedStatusCode": 401
+    }
+  ]
+}
