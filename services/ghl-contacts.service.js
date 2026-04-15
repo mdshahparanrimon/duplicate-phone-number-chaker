@@ -13,10 +13,13 @@ function normalizeValue(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-function isExactBusinessMatch(contact, target) {
+function isExactBusinessNameMatch(contact, businessName) {
+  return normalizeValue(contact?.companyName) === normalizeValue(businessName);
+}
+
+function isExactAddressMatch(contact, target) {
   return (
-    normalizeValue(contact?.companyName) === normalizeValue(target.businessName) &&
-    normalizeValue(contact?.address) === normalizeValue(target.address) &&
+    normalizeValue(contact?.address || contact?.address1) === normalizeValue(target.address) &&
     normalizeValue(contact?.city) === normalizeValue(target.city) &&
     normalizeValue(contact?.state) === normalizeValue(target.state) &&
     normalizeValue(contact?.country) === normalizeValue(target.country)
@@ -56,33 +59,7 @@ function buildSearchPayload(criteria) {
     locationId: criteria.locationId,
     page: 1,
     pageLimit: 100,
-    filters: [
-      {
-        field: "companyName",
-        operator: "eq",
-        value: criteria.businessName
-      },
-      {
-        field: "address",
-        operator: "eq",
-        value: criteria.address
-      },
-      {
-        field: "city",
-        operator: "eq",
-        value: criteria.city
-      },
-      {
-        field: "state",
-        operator: "eq",
-        value: criteria.state
-      },
-      {
-        field: "country",
-        operator: "eq",
-        value: criteria.country
-      }
-    ]
+    filters: criteria.filters
   };
 }
 
@@ -187,22 +164,12 @@ export async function searchDuplicateContactByPhoneEmail(criteria) {
   };
 }
 
-export async function searchContactsByBusinessAddress(criteria) {
-  const payload = buildSearchPayload(criteria);
-  const endpoint = `${GHL_BASE_URL}/contacts/search`;
-
-  console.info("[duplicate-business] GHL search request", {
+async function searchContacts(criteria, filters, logPrefix) {
+  const payload = buildSearchPayload({
     locationId: criteria.locationId,
-    businessName: criteria.businessName,
-    targetAddress: [
-      criteria.address,
-      criteria.city,
-      criteria.state,
-      criteria.country
-    ]
-      .filter(Boolean)
-      .join(", ")
+    filters
   });
+  const endpoint = `${GHL_BASE_URL}/contacts/search`;
 
   try {
     const response = await axios.post(endpoint, payload, {
@@ -214,22 +181,10 @@ export async function searchContactsByBusinessAddress(criteria) {
       }
     });
 
-    const contacts = extractContacts(response.data);
-    const exactMatches = contacts.filter((contact) =>
-      isExactBusinessMatch(contact, criteria)
-    );
-
-    console.info("[duplicate-business] GHL search response", {
-      locationId: criteria.locationId,
-      totalContactsReturned: contacts.length,
-      exactMatches: exactMatches.length,
-      sampleAddress: buildFullAddress(exactMatches[0] || {})
-    });
-
-    return exactMatches;
+    return extractContacts(response.data);
   } catch (error) {
     if (error.response) {
-      console.error("[duplicate-business] GHL response error", {
+      console.error(`[${logPrefix}] GHL response error`, {
         status: error.response.status,
         locationId: criteria.locationId,
         message: toErrorMessage(error)
@@ -239,7 +194,7 @@ export async function searchContactsByBusinessAddress(criteria) {
     }
 
     if (error.request) {
-      console.error("[duplicate-business] GHL network error", {
+      console.error(`[${logPrefix}] GHL network error`, {
         locationId: criteria.locationId,
         message: error.message
       });
@@ -247,13 +202,85 @@ export async function searchContactsByBusinessAddress(criteria) {
       throw new GhlServiceError("Network error while contacting GHL API", 502);
     }
 
-    console.error("[duplicate-business] Unexpected GHL service error", {
+    console.error(`[${logPrefix}] Unexpected GHL service error`, {
       locationId: criteria.locationId,
       message: error.message
     });
 
     throw new GhlServiceError("Unexpected error while contacting GHL API", 500);
   }
+}
+
+export async function searchContactsByBusinessName(criteria) {
+  const filters = [
+    {
+      field: "companyName",
+      operator: "eq",
+      value: criteria.businessName
+    }
+  ];
+
+  console.info("[duplicate-business-name] GHL search request", {
+    locationId: criteria.locationId,
+    businessName: criteria.businessName
+  });
+
+  const contacts = await searchContacts(criteria, filters, "duplicate-business-name");
+  const exactMatches = contacts.filter((contact) =>
+    isExactBusinessNameMatch(contact, criteria.businessName)
+  );
+
+  console.info("[duplicate-business-name] GHL search response", {
+    locationId: criteria.locationId,
+    totalContactsReturned: contacts.length,
+    exactMatches: exactMatches.length
+  });
+
+  return exactMatches;
+}
+
+export async function searchContactsByAddress(criteria) {
+  const filters = [
+    {
+      field: "address",
+      operator: "eq",
+      value: criteria.address
+    },
+    {
+      field: "city",
+      operator: "eq",
+      value: criteria.city
+    },
+    {
+      field: "state",
+      operator: "eq",
+      value: criteria.state
+    },
+    {
+      field: "country",
+      operator: "eq",
+      value: criteria.country
+    }
+  ];
+
+  console.info("[duplicate-business-address] GHL search request", {
+    locationId: criteria.locationId,
+    targetAddress: [criteria.address, criteria.city, criteria.state, criteria.country]
+      .filter(Boolean)
+      .join(", ")
+  });
+
+  const contacts = await searchContacts(criteria, filters, "duplicate-business-address");
+  const exactMatches = contacts.filter((contact) => isExactAddressMatch(contact, criteria));
+
+  console.info("[duplicate-business-address] GHL search response", {
+    locationId: criteria.locationId,
+    totalContactsReturned: contacts.length,
+    exactMatches: exactMatches.length,
+    sampleAddress: buildFullAddress(exactMatches[0] || {})
+  });
+
+  return exactMatches;
 }
 
 export async function getAllContacts(criteria) {

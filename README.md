@@ -123,7 +123,13 @@ Request body:
 ```
 
 Rules:
-- If business/address fields are missing: `status = null`
+- `businessNameStatus` is checked only when `businessName` is provided.
+- `addressStatus` is checked only when full address is provided (`address` or `address1` + `city` + `state` + `country`).
+- If one side is missing in request, that status returns `null`.
+- Top-level `status` rules:
+  - If any checked side is duplicate: `status = duplicate`
+  - If all provided checks are unique: `status = unique`
+  - If no businessName and no full address are provided: `status = null`
 - Exact match fields:
   - `companyName == businessName`
   - `address == address`
@@ -131,6 +137,7 @@ Rules:
   - `state == state`
   - `country == country`
 - `id` is excluded (self-match filtering)
+- `count` is the merged unique duplicate contacts from businessName and/or address checks.
 
 Response shape:
 

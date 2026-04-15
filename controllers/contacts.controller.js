@@ -3,14 +3,16 @@ import {
   validateRequestAuthContext
 } from "../middleware/auth.middleware.js";
 import {
+  hasBusinessName,
+  hasFullBusinessAddress,
   hasPhoneOrEmail,
-  hasRequiredBusinessAddressFields,
   normalizeCheckDuplicateBusinessPayload,
   normalizeCheckDuplicatePhoneEmailPayload
 } from "../validations/contacts.validation.js";
 import {
   GhlServiceError,
-  searchContactsByBusinessAddress,
+  searchContactsByAddress,
+  searchContactsByBusinessName,
   searchDuplicateContactByPhoneEmail
 } from "../services/ghl-contacts.service.js";
 
@@ -140,8 +142,10 @@ export async function checkDuplicateBusinessController(req, res) {
   }
 
   const payload = normalizeCheckDuplicateBusinessPayload(req.body || {});
+  const shouldCheckBusinessName = hasBusinessName(payload);
+  const shouldCheckAddress = hasFullBusinessAddress(payload);
 
-  if (!hasRequiredBusinessAddressFields(payload)) {
+  if (!shouldCheckBusinessName && !shouldCheckAddress) {
     return res.status(200).json({
       status: "null",
       count: 0,
@@ -151,27 +155,42 @@ export async function checkDuplicateBusinessController(req, res) {
   }
 
   try {
-    const matches = await searchContactsByBusinessAddress({
-      ...payload,
-      locationId: context.locationId,
-      apiKey: context.apiKey
-    });
-    const filteredMatches = excludeCurrentContact(matches, payload.id);
+    const [businessNameMatches, addressMatches] = await Promise.all([
+      shouldCheckBusinessName
+        ? searchContactsByBusinessName({
+            ...payload,
+            locationId: context.locationId,
+            apiKey: context.apiKey
+          })
+        : Promise.resolve([]),
+      shouldCheckAddress
+        ? searchContactsByAddress({
+            ...payload,
+            locationId: context.locationId,
+            apiKey: context.apiKey
+          })
+        : Promise.resolve([])
+    ]);
 
-    if (filteredMatches.length > 0) {
-      return res.status(200).json({
-        status: "duplicate",
-        count: filteredMatches.length,
-        businessNameStatus: "duplicate",
-        addressStatus: "duplicate"
-      });
-    }
+    const filteredBusinessNameMatches = excludeCurrentContact(businessNameMatches, payload.id);
+    const filteredAddressMatches = excludeCurrentContact(addressMatches, payload.id);
+    const allMatches = deduplicateContacts([
+      ...filteredBusinessNameMatches,
+      ...filteredAddressMatches
+    ]);
+
+    const businessNameStatus = shouldCheckBusinessName
+      ? (filteredBusinessNameMatches.length > 0 ? "duplicate" : "unique")
+      : "null";
+    const addressStatus = shouldCheckAddress
+      ? (filteredAddressMatches.length > 0 ? "duplicate" : "unique")
+      : "null";
 
     return res.status(200).json({
-      status: "unique",
-      count: 0,
-      businessNameStatus: "unique",
-      addressStatus: "unique"
+      status: computeTopStatus([businessNameStatus, addressStatus]),
+      count: allMatches.length,
+      businessNameStatus,
+      addressStatus
     });
   } catch (error) {
     if (error instanceof GhlServiceError) {

@@ -5,7 +5,7 @@ function normalizeText(value) {
 export function normalizeCheckDuplicateBusinessPayload(body = {}) {
   return {
     businessName: normalizeText(body.businessName),
-    address: normalizeText(body.address),
+    address: normalizeText(body.address || body.address1), // Support both "address" and "address1" for backward compatibility
     city: normalizeText(body.city),
     state: normalizeText(body.state),
     country: normalizeText(body.country),
@@ -13,14 +13,12 @@ export function normalizeCheckDuplicateBusinessPayload(body = {}) {
   };
 }
 
-export function hasRequiredBusinessAddressFields(payload) {
-  return Boolean(
-    payload.businessName &&
-      payload.address &&
-      payload.city &&
-      payload.state &&
-      payload.country
-  );
+export function hasBusinessName(payload) {
+  return Boolean(payload.businessName);
+}
+
+export function hasFullBusinessAddress(payload) {
+  return Boolean(payload.address && payload.city && payload.state && payload.country);
 }
 
 export function normalizeCheckDuplicatePhoneEmailPayload(body = {}) {
