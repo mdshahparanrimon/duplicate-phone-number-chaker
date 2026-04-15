@@ -1,3 +1,33 @@
+function mapDuplicateStatus(data, id) {
+  if (!data.contact) {
+    return "null";
+  }
+
+  return data.contact.id === id ? "unique" : "duplicate";
+}
+
+
+async function searchDuplicateContact({ ghlApiKey, locationId, fieldKey, fieldValue }) {
+  const params = new URLSearchParams({ locationId, [fieldKey]: fieldValue });
+  const response = await fetch(
+    `https://services.leadconnectorhq.com/contacts/search/duplicate?${params.toString()}`,
+    {
+      headers: {
+        Authorization: `Bearer ${ghlApiKey}`,
+        Version: "2021-07-28"
+      }
+    }
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error("GHL API error:", response.status, errorBody);
+    throw new Error("Failed to fetch contacts from GHL");
+  }
+
+  return response.json();
+}
+
 export default async function handler(req, res) {
 
   if (req.method !== "POST") {
@@ -10,10 +40,10 @@ export default async function handler(req, res) {
     return res.status(401).json({ message: "Unauthorized: invalid x-api-key" });
   }
 
-  const { id, name, email, phone } = req.body;
+  const { id, email, phone } = req.body || {};
 
-  if (!phone) {
-    return res.status(400).json({ message: "Missing required field: phone" });
+  if (!phone && !email) {
+    return res.status(400).json({ message: "Missing required field: phone or email" });
   }
 
   // GHL API key passed by the caller in the x-ghl-api-key header
@@ -27,44 +57,64 @@ export default async function handler(req, res) {
     return res.status(400).json({ message: "Missing x-location-id header" });
   }
 
-
-  let data;
-  try {
-    const params = new URLSearchParams({ locationId, number: phone });
-    const response = await fetch(
-      `https://services.leadconnectorhq.com/contacts/search/duplicate?${params.toString()}`,
-      {
-        headers: {
-          Authorization: `Bearer ${ghlApiKey}`,
-          Version: "2021-07-28"
-        }
-      }
+  const lookupTasks = [];
+  if (phone) {
+    lookupTasks.push(
+      searchDuplicateContact({
+        ghlApiKey,
+        locationId,
+        fieldKey: "number",
+        fieldValue: phone
+      }).then((data) => ({ field: "phone", data }))
     );
+  }
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      console.error("GHL API error:", response.status, errorBody);
-      return res.status(502).json({ message: "Failed to fetch contacts from GHL" });
+  if (email) {
+    lookupTasks.push(
+      searchDuplicateContact({
+        ghlApiKey,
+        locationId,
+        fieldKey: "email",
+        fieldValue: email
+      }).then((data) => ({ field: "email", data }))
+    );
+  }
+
+  let lookupResults;
+  try {
+    lookupResults = await Promise.all(lookupTasks);
+  } catch (err) {
+    console.error("Error calling GHL API:", err);
+    if (err.message === "Failed to fetch contacts from GHL") {
+      return res.status(502).json({ message: err.message });
     }
 
-    data = await response.json();
-  } catch (err) {
-    console.error("Network error calling GHL API:", err);
     return res.status(502).json({ message: "Network error while contacting GHL API" });
   }
 
-  // No contact found at all → unique
-  // Found a contact with a DIFFERENT id → duplicate (another contact owns this number)
-  // Found the contact with the SAME id → unique (it found itself, no other duplicate)
-  let status;
-  if (!data.contact) {
-    status = "null";
-  } else if (data.contact.id === id) {
-    status = "unique";
-  } else {
-    status = "duplicate";
+  let phoneStatus;
+  let emailStatus;
+  for (const result of lookupResults) {
+    const fieldStatus = mapDuplicateStatus(result.data, id);
+    if (result.field === "phone") {
+      phoneStatus = fieldStatus;
+    } else if (result.field === "email") {
+      emailStatus = fieldStatus;
+    }
   }
 
-  return res.status(200).json({ status });
+  const evaluatedStatuses = [phoneStatus, emailStatus].filter(Boolean);
+  let status = "null";
+  if (evaluatedStatuses.includes("duplicate")) {
+    status = "duplicate";
+  } else if (evaluatedStatuses.includes("unique")) {
+    status = "unique";
+  }
+
+  return res.status(200).json({
+    status,
+    ...(phone ? { phoneStatus } : {}),
+    ...(email ? { emailStatus } : {})
+  });
 
 }
