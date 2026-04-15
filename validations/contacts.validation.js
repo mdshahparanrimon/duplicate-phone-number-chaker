@@ -5,7 +5,7 @@ function normalizeText(value) {
 export function normalizeCheckDuplicateBusinessPayload(body = {}) {
   return {
     businessName: normalizeText(body.businessName),
-    address1: normalizeText(body.address1),
+    address: normalizeText(body.address),
     city: normalizeText(body.city),
     state: normalizeText(body.state),
     country: normalizeText(body.country),
@@ -16,7 +16,7 @@ export function normalizeCheckDuplicateBusinessPayload(body = {}) {
 export function hasRequiredBusinessAddressFields(payload) {
   return Boolean(
     payload.businessName &&
-      payload.address1 &&
+      payload.address &&
       payload.city &&
       payload.state &&
       payload.country

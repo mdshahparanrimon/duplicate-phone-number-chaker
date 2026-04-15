@@ -23,7 +23,11 @@ function excludeCurrentContact(matches, id) {
   return matches.filter((contact) => String(contact?.id) !== normalizedId);
 }
 
-function resolveFieldStatus(contact, id) {
+function resolveFieldStatus(contact, id, requested) {
+  if (!requested) {
+    return null;
+  }
+
   if (!contact) {
     return "null";
   }
@@ -35,16 +39,12 @@ function resolveFieldStatus(contact, id) {
   return "duplicate";
 }
 
-function computeAndTopStatus(fieldStatuses) {
-  if (fieldStatuses.length === 0) {
+function computeTopStatus(statuses) {
+  if (statuses.every((status) => status === null || status === "null")) {
     return "null";
   }
 
-  if (fieldStatuses.every((status) => status === "null")) {
-    return "null";
-  }
-
-  if (fieldStatuses.includes("duplicate")) {
+  if (statuses.includes("duplicate")) {
     return "duplicate";
   }
 
@@ -100,8 +100,7 @@ async function runPhoneEmailDuplicateCheck(req) {
       statusCode: 200,
       body: {
         status: "null",
-        count: 0,
-        matches: []
+        count: 0
       }
     };
   }
@@ -113,11 +112,8 @@ async function runPhoneEmailDuplicateCheck(req) {
     email: payload.email
   });
 
-  const phoneStatus = payload.phone ? resolveFieldStatus(lookupResult.phoneContact, payload.id) : undefined;
-  const emailStatus = payload.email ? resolveFieldStatus(lookupResult.emailContact, payload.id) : undefined;
-
-  const evaluatedStatuses = [phoneStatus, emailStatus].filter(Boolean);
-  const topStatus = computeAndTopStatus(evaluatedStatuses);
+  const phoneStatus = resolveFieldStatus(lookupResult.phoneContact, payload.id, Boolean(payload.phone));
+  const emailStatus = resolveFieldStatus(lookupResult.emailContact, payload.id, Boolean(payload.email));
 
   const combinedMatches = deduplicateContacts(
     excludeCurrentContact(
@@ -126,16 +122,13 @@ async function runPhoneEmailDuplicateCheck(req) {
     )
   );
 
-  const finalMatches = topStatus === "duplicate" ? combinedMatches : [];
-
   return {
     statusCode: 200,
     body: {
-      status: topStatus,
-      count: finalMatches.length,
-      matches: finalMatches,
-      ...(payload.phone ? { phoneStatus } : {}),
-      ...(payload.email ? { emailStatus } : {})
+      status: computeTopStatus([phoneStatus, emailStatus]),
+      count: combinedMatches.length,
+      phoneStatus,
+      emailStatus
     }
   };
 }
@@ -149,7 +142,12 @@ export async function checkDuplicateBusinessController(req, res) {
   const payload = normalizeCheckDuplicateBusinessPayload(req.body || {});
 
   if (!hasRequiredBusinessAddressFields(payload)) {
-    return res.status(200).json({ status: "null" });
+    return res.status(200).json({
+      status: "null",
+      count: 0,
+      businessNameStatus: "null",
+      addressStatus: "null"
+    });
   }
 
   try {
@@ -164,14 +162,16 @@ export async function checkDuplicateBusinessController(req, res) {
       return res.status(200).json({
         status: "duplicate",
         count: filteredMatches.length,
-        matches: filteredMatches
+        businessNameStatus: "duplicate",
+        addressStatus: "duplicate"
       });
     }
 
     return res.status(200).json({
       status: "unique",
       count: 0,
-      matches: []
+      businessNameStatus: "unique",
+      addressStatus: "unique"
     });
   } catch (error) {
     if (error instanceof GhlServiceError) {
@@ -209,12 +209,9 @@ export async function checkDuplicatePhoneEmailLegacyController(req, res) {
 
     return res.status(200).json({
       status: result.body.status,
-      ...(Object.prototype.hasOwnProperty.call(result.body, "phoneStatus")
-        ? { phoneStatus: result.body.phoneStatus }
-        : {}),
-      ...(Object.prototype.hasOwnProperty.call(result.body, "emailStatus")
-        ? { emailStatus: result.body.emailStatus }
-        : {})
+      count: result.body.count,
+      phoneStatus: result.body.phoneStatus,
+      emailStatus: result.body.emailStatus
     });
   } catch (error) {
     if (error instanceof GhlServiceError) {

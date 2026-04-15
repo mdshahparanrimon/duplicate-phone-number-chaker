@@ -4,7 +4,7 @@ function normalizeAddressPart(value) {
 
 export function buildFullAddress(contact = {}) {
   const parts = [
-    normalizeAddressPart(contact.address1),
+    normalizeAddressPart(contact.address),
     normalizeAddressPart(contact.city),
     normalizeAddressPart(contact.state),
     normalizeAddressPart(contact.country)

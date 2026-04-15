@@ -16,7 +16,7 @@ function normalizeValue(value) {
 function isExactBusinessMatch(contact, target) {
   return (
     normalizeValue(contact?.companyName) === normalizeValue(target.businessName) &&
-    normalizeValue(contact?.address1) === normalizeValue(target.address1) &&
+    normalizeValue(contact?.address) === normalizeValue(target.address) &&
     normalizeValue(contact?.city) === normalizeValue(target.city) &&
     normalizeValue(contact?.state) === normalizeValue(target.state) &&
     normalizeValue(contact?.country) === normalizeValue(target.country)
@@ -63,9 +63,9 @@ function buildSearchPayload(criteria) {
         value: criteria.businessName
       },
       {
-        field: "address1",
+        field: "address",
         operator: "eq",
-        value: criteria.address1
+        value: criteria.address
       },
       {
         field: "city",
@@ -195,7 +195,7 @@ export async function searchContactsByBusinessAddress(criteria) {
     locationId: criteria.locationId,
     businessName: criteria.businessName,
     targetAddress: [
-      criteria.address1,
+      criteria.address,
       criteria.city,
       criteria.state,
       criteria.country

@@ -94,7 +94,6 @@ Response shape:
 {
   "status": "duplicate",
   "count": 1,
-  "matches": [],
   "phoneStatus": "duplicate",
   "emailStatus": "unique"
 }
@@ -115,7 +114,7 @@ Request body:
 ```json
 {
   "businessName": "ABC LLC",
-  "address1": "123 Main",
+  "address": "123 Main",
   "city": "Austin",
   "state": "TX",
   "country": "US",
@@ -127,7 +126,7 @@ Rules:
 - If business/address fields are missing: `status = null`
 - Exact match fields:
   - `companyName == businessName`
-  - `address1 == address1`
+  - `address == address`
   - `city == city`
   - `state == state`
   - `country == country`
@@ -139,16 +138,8 @@ Response shape:
 {
   "status": "duplicate",
   "count": 2,
-  "matches": [
-    {
-      "id": "contact_1",
-      "companyName": "ABC LLC",
-      "address1": "123 Main",
-      "city": "Austin",
-      "state": "TX",
-      "country": "US"
-    }
-  ]
+  "businessNameStatus": "duplicate",
+  "addressStatus": "duplicate"
 }
 ```
 
