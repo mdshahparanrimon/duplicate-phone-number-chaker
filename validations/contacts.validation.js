@@ -1,11 +1,15 @@
 function normalizeText(value) {
-  return typeof value === "string" ? value.trim() : "";
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return String(value).trim();
 }
 
 export function normalizeCheckDuplicateBusinessPayload(body = {}) {
   return {
     businessName: normalizeText(body.businessName),
-    address: normalizeText(body.address || body.address1), // Support both "address" and "address1" for backward compatibility
+    address: normalizeText(body.address || body.address1 || body.streetaddress),
     city: normalizeText(body.city),
     state: normalizeText(body.state),
     country: normalizeText(body.country),
@@ -21,7 +25,7 @@ export function hasBusinessName(payload) {
 }
 
 export function hasFullBusinessAddress(payload) {
-  return Boolean(payload.address && payload.city && payload.state && payload.country);
+  return Boolean(payload.address && payload.city && payload.country);
 }
 
 export function normalizeCheckDuplicatePhoneEmailPayload(body = {}) {

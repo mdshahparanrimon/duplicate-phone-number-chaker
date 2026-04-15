@@ -4,6 +4,8 @@ import { buildFullAddress } from "../utils/address.js";
 const GHL_BASE_URL = process.env.GHL_BASE_URL || "https://services.leadconnectorhq.com";
 const GHL_VERSION = "2021-07-28";
 const REQUEST_TIMEOUT_MS = 15000;
+const CONTACT_PAGE_LIMIT = 100;
+const MAX_CONTACT_SEARCH_PAGES = 50;
 
 function toErrorMessage(error, fallback = "Unknown GHL error") {
   return error?.response?.data?.message || error?.message || fallback;
@@ -13,16 +15,48 @@ function normalizeValue(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function getPrimaryAddressRecord(contact = {}) {
+  if (Array.isArray(contact?.addresses) && contact.addresses.length > 0) {
+    return contact.addresses[0] || {};
+  }
+
+  return {};
+}
+
+function getStreetAddress(contact = {}) {
+  const primaryAddress = getPrimaryAddressRecord(contact);
+  return (
+    contact?.address ||
+    contact?.address1 ||
+    contact?.streetAddress ||
+    contact?.streetaddress ||
+    primaryAddress?.address ||
+    primaryAddress?.address1 ||
+    primaryAddress?.street ||
+    primaryAddress?.streetAddress ||
+    primaryAddress?.streetaddress
+  );
+}
+
+function getCity(contact = {}) {
+  const primaryAddress = getPrimaryAddressRecord(contact);
+  return contact?.city || primaryAddress?.city;
+}
+
+function getCountry(contact = {}) {
+  const primaryAddress = getPrimaryAddressRecord(contact);
+  return contact?.country || primaryAddress?.country;
+}
+
 function isExactBusinessNameMatch(contact, businessName) {
   return normalizeValue(contact?.companyName) === normalizeValue(businessName);
 }
 
 function isExactAddressMatch(contact, target) {
   return (
-    normalizeValue(contact?.address || contact?.address1) === normalizeValue(target.address) &&
-    normalizeValue(contact?.city) === normalizeValue(target.city) &&
-    normalizeValue(contact?.state) === normalizeValue(target.state) &&
-    normalizeValue(contact?.country) === normalizeValue(target.country)
+    normalizeValue(getStreetAddress(contact)) === normalizeValue(target.address) &&
+    normalizeValue(getCity(contact)) === normalizeValue(target.city) &&
+    normalizeValue(getCountry(contact)) === normalizeValue(target.country)
   );
 }
 
@@ -57,8 +91,8 @@ function extractSingleContact(duplicateResponseData) {
 function buildSearchPayload(criteria) {
   return {
     locationId: criteria.locationId,
-    page: 1,
-    pageLimit: 100,
+    page: criteria.page || 1,
+    pageLimit: criteria.pageLimit || CONTACT_PAGE_LIMIT,
     filters: criteria.filters
   };
 }
@@ -240,42 +274,43 @@ export async function searchContactsByBusinessName(criteria) {
 }
 
 export async function searchContactsByAddress(criteria) {
-  const filters = [
-    {
-      field: "address",
-      operator: "eq",
-      value: criteria.address
-    },
-    {
-      field: "city",
-      operator: "eq",
-      value: criteria.city
-    },
-    {
-      field: "state",
-      operator: "eq",
-      value: criteria.state
-    },
-    {
-      field: "country",
-      operator: "eq",
-      value: criteria.country
-    }
-  ];
-
   console.info("[duplicate-business-address] GHL search request", {
     locationId: criteria.locationId,
-    targetAddress: [criteria.address, criteria.city, criteria.state, criteria.country]
+    targetAddress: [criteria.address, criteria.city, criteria.country]
       .filter(Boolean)
       .join(", ")
   });
 
-  const contacts = await searchContacts(criteria, filters, "duplicate-business-address");
+  const contacts = [];
+  let page = 1;
+
+  while (page <= MAX_CONTACT_SEARCH_PAGES) {
+    const pageResult = await getAllContacts({
+      apiKey: criteria.apiKey,
+      locationId: criteria.locationId,
+      page,
+      pageLimit: CONTACT_PAGE_LIMIT,
+      query: ""
+    });
+
+    if (!Array.isArray(pageResult.contacts) || pageResult.contacts.length === 0) {
+      break;
+    }
+
+    contacts.push(...pageResult.contacts);
+
+    if (pageResult.contacts.length < CONTACT_PAGE_LIMIT) {
+      break;
+    }
+
+    page += 1;
+  }
+
   const exactMatches = contacts.filter((contact) => isExactAddressMatch(contact, criteria));
 
   console.info("[duplicate-business-address] GHL search response", {
     locationId: criteria.locationId,
-    totalContactsReturned: contacts.length,
+    totalContactsScanned: contacts.length,
     exactMatches: exactMatches.length,
     sampleAddress: buildFullAddress(exactMatches[0] || {})
   });

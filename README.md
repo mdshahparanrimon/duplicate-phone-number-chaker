@@ -114,9 +114,8 @@ Request body:
 ```json
 {
   "businessName": "ABC LLC",
-  "address": "123 Main",
+  "streetaddress": "123 Main",
   "city": "Austin",
-  "state": "TX",
   "country": "US",
   "postalCode": "92648",
   "id": "contact_123"
@@ -125,7 +124,7 @@ Request body:
 
 Rules:
 - `businessNameStatus` is checked only when `businessName` is provided.
-- `addressStatus` is checked only when full address is provided (`address` or `address1` + `city` + `state` + `country`).
+- `addressStatus` is checked only when address data is provided (`streetaddress` or `address` or `address1` + `city` + `country`).
 - If one side is missing in request, that status returns `null`.
 - Top-level `status` rules:
   - If any checked side is duplicate: `status = duplicate`
@@ -133,13 +132,13 @@ Rules:
   - If no businessName and no full address are provided: `status = null`
 - Exact match fields:
   - `companyName == businessName`
-  - `address == address`
+  - `streetaddress == address`
   - `city == city`
-  - `state == state`
   - `country == country`
 - `id` is excluded (self-match filtering)
 - `count` is the merged unique duplicate contacts from businessName and/or address checks.
-- `address` is returned as an array after `addressStatus`.
+- Address duplicate check scans full contact list and confirms `addressStatus` from streetaddress + city + country.
+- `address` is returned as an array after `addressStatus`, including `Postal Code` when available.
 
 Response shape:
 

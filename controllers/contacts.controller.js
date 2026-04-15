@@ -73,26 +73,58 @@ function deduplicateContacts(contacts) {
 }
 
 function normalizeAddressValue(value) {
-  return typeof value === "string" ? value.trim() : "";
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return String(value).trim();
+}
+
+function getPrimaryAddressRecord(record = {}) {
+  if (Array.isArray(record?.addresses) && record.addresses.length > 0) {
+    return record.addresses[0] || {};
+  }
+
+  return {};
 }
 
 function resolvePostalCode(record = {}) {
+  const primaryAddress = getPrimaryAddressRecord(record);
+
   return normalizeAddressValue(
     record.postalCode ||
       record.postal_code ||
       record.zipCode ||
       record.zip ||
       record.zipcode ||
-      record["Postal Code"]
+      record["Postal Code"] ||
+      primaryAddress.postalCode ||
+      primaryAddress.postal_code ||
+      primaryAddress.zipCode ||
+      primaryAddress.zip ||
+      primaryAddress.zipcode ||
+      primaryAddress["Postal Code"]
   );
 }
 
 function toAddressItem(record = {}) {
+  const primaryAddress = getPrimaryAddressRecord(record);
+
   const item = {
-    streetaddress: normalizeAddressValue(record.address || record.address1),
-    city: normalizeAddressValue(record.city),
-    country: normalizeAddressValue(record.country),
-    state: normalizeAddressValue(record.state),
+    streetaddress: normalizeAddressValue(
+      record.address ||
+        record.address1 ||
+        record.streetAddress ||
+        record.streetaddress ||
+        primaryAddress.address ||
+        primaryAddress.address1 ||
+        primaryAddress.street ||
+        primaryAddress.streetAddress ||
+        primaryAddress.streetaddress
+    ),
+    city: normalizeAddressValue(record.city || primaryAddress.city),
+    country: normalizeAddressValue(record.country || primaryAddress.country),
+    state: normalizeAddressValue(record.state || primaryAddress.state),
     "Postal Code": resolvePostalCode(record)
   };
 
@@ -114,9 +146,7 @@ function deduplicateAddressItems(items) {
     const key = [
       item.streetaddress,
       item.city,
-      item.country,
-      item.state,
-      item["Postal Code"]
+      item.country
     ]
       .map((value) => normalizeAddressValue(value).toLowerCase())
       .join("|");
