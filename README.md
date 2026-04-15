@@ -126,6 +126,7 @@ Request body:
 Rules:
 - `businessNameStatus` is checked only when `businessName` is provided.
 - `addressStatus` is checked when `full_address` is provided, or when address data is provided (`streetaddress` or `address` or `address1` + `city` + `country`).
+- If `full_address` matches any other contact's full address in the contact list (excluding same `id`), `addressStatus = duplicate`.
 - If one side is missing in request, that status returns `null`.
 - Top-level `status` rules:
   - If any checked side is duplicate: `status = duplicate`

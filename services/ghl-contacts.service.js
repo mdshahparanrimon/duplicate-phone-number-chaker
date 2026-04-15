@@ -18,9 +18,33 @@ function normalizeValue(value) {
 function normalizeAddressFingerprint(value) {
   return String(value || "")
     .toLowerCase()
-    .replace(/,/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function buildTokenFingerprint(value) {
+  const tokens = normalizeAddressFingerprint(value)
+    .split(" ")
+    .filter(Boolean)
+    .sort();
+
+  return tokens.join(" ");
+}
+
+function isEquivalentAddress(candidate, target) {
+  const candidateSeq = normalizeAddressFingerprint(candidate);
+  const targetSeq = normalizeAddressFingerprint(target);
+
+  if (!candidateSeq || !targetSeq) {
+    return false;
+  }
+
+  if (candidateSeq === targetSeq) {
+    return true;
+  }
+
+  return buildTokenFingerprint(candidate) === buildTokenFingerprint(target);
 }
 
 function getPrimaryAddressRecord(contact = {}) {
@@ -56,22 +80,61 @@ function getCountry(contact = {}) {
   return contact?.country || primaryAddress?.country;
 }
 
+function getState(contact = {}) {
+  const primaryAddress = getPrimaryAddressRecord(contact);
+  return contact?.state || primaryAddress?.state;
+}
+
+function getPostalCode(contact = {}) {
+  const primaryAddress = getPrimaryAddressRecord(contact);
+  return (
+    contact?.postalCode ||
+    contact?.postal_code ||
+    contact?.zipCode ||
+    contact?.zip ||
+    contact?.zipcode ||
+    contact?.["Postal Code"] ||
+    primaryAddress?.postalCode ||
+    primaryAddress?.postal_code ||
+    primaryAddress?.zipCode ||
+    primaryAddress?.zip ||
+    primaryAddress?.zipcode ||
+    primaryAddress?.["Postal Code"]
+  );
+}
+
 function buildContactFullAddressCandidates(contact = {}) {
   const primaryAddress = getPrimaryAddressRecord(contact);
+  const street = getStreetAddress(contact);
+  const city = getCity(contact);
+  const state = getState(contact);
+  const postalCode = getPostalCode(contact);
+  const country = getCountry(contact);
+
   const candidates = [
     contact?.fullAddress,
     contact?.full_address,
     primaryAddress?.fullAddress,
     primaryAddress?.full_address,
     buildFullAddress(contact),
-    [
-      getStreetAddress(contact),
-      getCity(contact),
-      contact?.state || primaryAddress?.state,
-      getCountry(contact)
-    ]
+    [street, city, state, postalCode, country].filter(Boolean).join(", "),
+    [street, city, state, country].filter(Boolean).join(", "),
+    [street, city, country].filter(Boolean).join(", ")
+  ];
+
+  return candidates
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+}
+
+function buildTargetAddressCandidates(target = {}) {
+  const candidates = [
+    target.fullAddress,
+    [target.address, target.city, target.state, target.postalCode, target.country]
       .filter(Boolean)
-      .join(", ")
+      .join(", "),
+    [target.address, target.city, target.state, target.country].filter(Boolean).join(", "),
+    [target.address, target.city, target.country].filter(Boolean).join(", ")
   ];
 
   return candidates
@@ -84,13 +147,15 @@ function isExactBusinessNameMatch(contact, businessName) {
 }
 
 function isExactAddressMatch(contact, target) {
-  const targetFullAddress = normalizeAddressFingerprint(target.fullAddress);
-  if (targetFullAddress) {
-    const matchedByFullAddress = buildContactFullAddressCandidates(contact).some(
-      (candidate) => normalizeAddressFingerprint(candidate) === targetFullAddress
+  const contactCandidates = buildContactFullAddressCandidates(contact);
+  const targetCandidates = buildTargetAddressCandidates(target);
+
+  if (targetCandidates.length > 0) {
+    const matchedByAddressCandidates = targetCandidates.some((targetCandidate) =>
+      contactCandidates.some((candidate) => isEquivalentAddress(candidate, targetCandidate))
     );
 
-    if (matchedByFullAddress) {
+    if (matchedByAddressCandidates) {
       return true;
     }
   }
