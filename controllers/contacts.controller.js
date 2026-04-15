@@ -88,6 +88,16 @@ function getPrimaryAddressRecord(record = {}) {
   return {};
 }
 
+function resolveFullAddressText(record = {}) {
+  const primaryAddress = getPrimaryAddressRecord(record);
+  return normalizeAddressValue(
+    record.fullAddress ||
+      record.full_address ||
+      primaryAddress.fullAddress ||
+      primaryAddress.full_address
+  );
+}
+
 function resolvePostalCode(record = {}) {
   const primaryAddress = getPrimaryAddressRecord(record);
 
@@ -109,6 +119,7 @@ function resolvePostalCode(record = {}) {
 
 function toAddressItem(record = {}) {
   const primaryAddress = getPrimaryAddressRecord(record);
+  const fullAddress = resolveFullAddressText(record);
 
   const item = {
     streetaddress: normalizeAddressValue(
@@ -120,7 +131,8 @@ function toAddressItem(record = {}) {
         primaryAddress.address1 ||
         primaryAddress.street ||
         primaryAddress.streetAddress ||
-        primaryAddress.streetaddress
+        primaryAddress.streetaddress ||
+        fullAddress
     ),
     city: normalizeAddressValue(record.city || primaryAddress.city),
     country: normalizeAddressValue(record.country || primaryAddress.country),

@@ -114,6 +114,7 @@ Request body:
 ```json
 {
   "businessName": "ABC LLC",
+  "full_address": "19671 Beach Blvd., Suite 103, Huntington Beach, CA, 92648, US",
   "streetaddress": "123 Main",
   "city": "Austin",
   "country": "US",
@@ -124,7 +125,7 @@ Request body:
 
 Rules:
 - `businessNameStatus` is checked only when `businessName` is provided.
-- `addressStatus` is checked only when address data is provided (`streetaddress` or `address` or `address1` + `city` + `country`).
+- `addressStatus` is checked when `full_address` is provided, or when address data is provided (`streetaddress` or `address` or `address1` + `city` + `country`).
 - If one side is missing in request, that status returns `null`.
 - Top-level `status` rules:
   - If any checked side is duplicate: `status = duplicate`
@@ -132,6 +133,7 @@ Rules:
   - If no businessName and no full address are provided: `status = null`
 - Exact match fields:
   - `companyName == businessName`
+  - `full_address == contact full address` (preferred when provided)
   - `streetaddress == address`
   - `city == city`
   - `country == country`

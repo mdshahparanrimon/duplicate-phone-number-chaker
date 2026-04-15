@@ -15,6 +15,14 @@ function normalizeValue(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function normalizeAddressFingerprint(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/,/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function getPrimaryAddressRecord(contact = {}) {
   if (Array.isArray(contact?.addresses) && contact.addresses.length > 0) {
     return contact.addresses[0] || {};
@@ -48,11 +56,45 @@ function getCountry(contact = {}) {
   return contact?.country || primaryAddress?.country;
 }
 
+function buildContactFullAddressCandidates(contact = {}) {
+  const primaryAddress = getPrimaryAddressRecord(contact);
+  const candidates = [
+    contact?.fullAddress,
+    contact?.full_address,
+    primaryAddress?.fullAddress,
+    primaryAddress?.full_address,
+    buildFullAddress(contact),
+    [
+      getStreetAddress(contact),
+      getCity(contact),
+      contact?.state || primaryAddress?.state,
+      getCountry(contact)
+    ]
+      .filter(Boolean)
+      .join(", ")
+  ];
+
+  return candidates
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+}
+
 function isExactBusinessNameMatch(contact, businessName) {
   return normalizeValue(contact?.companyName) === normalizeValue(businessName);
 }
 
 function isExactAddressMatch(contact, target) {
+  const targetFullAddress = normalizeAddressFingerprint(target.fullAddress);
+  if (targetFullAddress) {
+    const matchedByFullAddress = buildContactFullAddressCandidates(contact).some(
+      (candidate) => normalizeAddressFingerprint(candidate) === targetFullAddress
+    );
+
+    if (matchedByFullAddress) {
+      return true;
+    }
+  }
+
   return (
     normalizeValue(getStreetAddress(contact)) === normalizeValue(target.address) &&
     normalizeValue(getCity(contact)) === normalizeValue(target.city) &&
@@ -276,7 +318,7 @@ export async function searchContactsByBusinessName(criteria) {
 export async function searchContactsByAddress(criteria) {
   console.info("[duplicate-business-address] GHL search request", {
     locationId: criteria.locationId,
-    targetAddress: [criteria.address, criteria.city, criteria.country]
+    targetAddress: criteria.fullAddress || [criteria.address, criteria.city, criteria.country]
       .filter(Boolean)
       .join(", ")
   });
