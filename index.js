@@ -1,6 +1,7 @@
 import express from "express";
 import handler from "./api/check-duplicate.js";
 import getAllContactsHandler from "./api/get-all-contacts.js";
+import contactsRoutes from "./routes/contacts.routes.js";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -10,6 +11,7 @@ app.use(express.json());
 
 app.post("/api/check-duplicate", handler);
 app.post("/api/get-all-contacts", getAllContactsHandler);
+app.use("/api/v1/contacts", contactsRoutes);
 
 const PORT = process.env.PORT || 8000;
 app.listen(PORT, () => {
