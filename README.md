@@ -140,7 +140,7 @@ Rules:
 - `id` is excluded (self-match filtering)
 - `count` is the merged unique duplicate contacts from businessName and/or address checks.
 - Address duplicate check scans full contact list and confirms `addressStatus` from streetaddress + city + country.
-- `address` is returned as an array after `addressStatus`, including `Postal Code` when available.
+- `address` is returned as an array after `addressStatus`, including `full_address` and `Postal Code` when available.
 
 Response shape:
 
@@ -156,7 +156,8 @@ Response shape:
       "city": "Huntington Beach",
       "country": "US",
       "state": "CA",
-      "Postal Code": "92648"
+      "Postal Code": "92648",
+      "full_address": "19671 Beach Blvd., Suite 103, Huntington Beach, CA, 92648, US"
     }
   ]
 }

@@ -131,16 +131,35 @@ function toAddressItem(record = {}) {
         primaryAddress.address1 ||
         primaryAddress.street ||
         primaryAddress.streetAddress ||
-        primaryAddress.streetaddress ||
-        fullAddress
+        primaryAddress.streetaddress
     ),
     city: normalizeAddressValue(record.city || primaryAddress.city),
     country: normalizeAddressValue(record.country || primaryAddress.country),
     state: normalizeAddressValue(record.state || primaryAddress.state),
-    "Postal Code": resolvePostalCode(record)
+    "Postal Code": resolvePostalCode(record),
+    full_address: fullAddress
   };
 
-  if (!item.streetaddress && !item.city && !item.country && !item.state && !item["Postal Code"]) {
+  if (!item.full_address) {
+    item.full_address = [
+      item.streetaddress,
+      item.city,
+      item.state,
+      item["Postal Code"],
+      item.country
+    ]
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  if (
+    !item.streetaddress &&
+    !item.city &&
+    !item.country &&
+    !item.state &&
+    !item["Postal Code"] &&
+    !item.full_address
+  ) {
     return null;
   }
 
