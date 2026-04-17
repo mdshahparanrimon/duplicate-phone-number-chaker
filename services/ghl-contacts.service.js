@@ -162,8 +162,8 @@ function isExactAddressMatch(contact, target) {
 
   return (
     normalizeValue(getStreetAddress(contact)) === normalizeValue(target.address) &&
-    normalizeValue(getCity(contact)) === normalizeValue(target.city) &&
-    normalizeValue(getCountry(contact)) === normalizeValue(target.country)
+    normalizeValue(getCity(contact)) === normalizeValue(target.city)
+    // normalizeValue(getCountry(contact)) === normalizeValue(target.country)
   );
 }
 
