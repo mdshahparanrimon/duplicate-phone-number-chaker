@@ -92,8 +92,16 @@ export function hasBusinessName(payload) {
   return Boolean(payload.businessName);
 }
 
+export function hasStreetAddress(payload) {
+  return Boolean(payload.address);
+}
+
+export function hasCity(payload) {
+  return Boolean(payload.city);
+}
+
 export function hasFullBusinessAddress(payload) {
-  return Boolean(payload.fullAddress || (payload.address && payload.city && payload.country));
+  return Boolean(payload.fullAddress || payload.address || payload.city);
 }
 
 export function normalizeCheckDuplicatePhoneEmailPayload(body = {}) {

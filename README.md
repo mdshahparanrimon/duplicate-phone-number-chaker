@@ -125,22 +125,22 @@ Request body:
 
 Rules:
 - `businessNameStatus` is checked only when `businessName` is provided.
-- `addressStatus` is checked when `full_address` is provided, or when address data is provided (`streetaddress` or `address` or `address1` + `city` + `country`).
-- If `full_address` matches any other contact's full address in the contact list (excluding same `id`), `addressStatus = duplicate`.
-- If one side is missing in request, that status returns `null`.
+- Address side checks run when any of these are present: `full_address`, `streetaddress`/`address`/`address1`, or `city`.
+- `streetAddressStatus` is checked only when street address is available in the request.
+- `cityStatus` is checked only when city is available in the request.
+- If a field is not requested, its status returns `null`.
+- `addressStatus` is derived from street + city statuses and is `duplicate` only when both `streetAddressStatus` and `cityStatus` are `duplicate`; otherwise `unique` (or `null` when address side is not requested).
 - Top-level `status` rules:
   - If any checked side is duplicate: `status = duplicate`
   - If all provided checks are unique: `status = unique`
-  - If no businessName and no full address are provided: `status = null`
+  - If no businessName and no address-side input are provided: `status = null`
 - Exact match fields:
   - `companyName == businessName`
-  - `full_address == contact full address` (preferred when provided)
-  - `streetaddress == address`
-  - `city == city`
-  - `country == country`
+  - `streetaddress == address` (normalized)
+  - `city == city` (normalized)
 - `id` is excluded (self-match filtering)
 - `count` is the merged unique duplicate contacts from businessName and/or address checks.
-- Address duplicate check scans full contact list and confirms `addressStatus` from streetaddress + city + country.
+- Address duplicate check scans full contact list and computes street/city duplicate counts separately.
 - `address` is returned as an array after `addressStatus`, including `full_address` and `Postal Code` when available.
 
 Response shape:
@@ -151,6 +151,10 @@ Response shape:
   "count": 2,
   "businessNameStatus": "duplicate",
   "addressStatus": "duplicate",
+  "streetAddressStatus": "duplicate",
+  "cityStatus": "duplicate",
+  "streetAddressCount": 2,
+  "cityCount": 2,
   "address": [
     {
       "streetaddress": "19671 Beach Blvd., Suite 103",

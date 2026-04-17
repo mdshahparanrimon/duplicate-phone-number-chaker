@@ -56,7 +56,16 @@
       },
       "expected": {
         "successStatusCodes": [200],
-        "requiredResponseKeys": ["status", "count", "businessNameStatus", "addressStatus"]
+        "requiredResponseKeys": [
+          "status",
+          "count",
+          "businessNameStatus",
+          "addressStatus",
+          "streetAddressStatus",
+          "cityStatus",
+          "streetAddressCount",
+          "cityCount"
+        ]
       }
     },
     {

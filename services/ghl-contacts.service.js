@@ -75,96 +75,29 @@ function getCity(contact = {}) {
   return contact?.city || primaryAddress?.city;
 }
 
-function getCountry(contact = {}) {
-  const primaryAddress = getPrimaryAddressRecord(contact);
-  return contact?.country || primaryAddress?.country;
-}
-
-function getState(contact = {}) {
-  const primaryAddress = getPrimaryAddressRecord(contact);
-  return contact?.state || primaryAddress?.state;
-}
-
-function getPostalCode(contact = {}) {
-  const primaryAddress = getPrimaryAddressRecord(contact);
-  return (
-    contact?.postalCode ||
-    contact?.postal_code ||
-    contact?.zipCode ||
-    contact?.zip ||
-    contact?.zipcode ||
-    contact?.["Postal Code"] ||
-    primaryAddress?.postalCode ||
-    primaryAddress?.postal_code ||
-    primaryAddress?.zipCode ||
-    primaryAddress?.zip ||
-    primaryAddress?.zipcode ||
-    primaryAddress?.["Postal Code"]
-  );
-}
-
-function buildContactFullAddressCandidates(contact = {}) {
-  const primaryAddress = getPrimaryAddressRecord(contact);
-  const street = getStreetAddress(contact);
-  const city = getCity(contact);
-  const state = getState(contact);
-  const postalCode = getPostalCode(contact);
-  const country = getCountry(contact);
-
-  const candidates = [
-    contact?.fullAddress,
-    contact?.full_address,
-    primaryAddress?.fullAddress,
-    primaryAddress?.full_address,
-    buildFullAddress(contact),
-    [street, city, state, postalCode, country].filter(Boolean).join(", "),
-    [street, city, state, country].filter(Boolean).join(", "),
-    [street, city, country].filter(Boolean).join(", ")
-  ];
-
-  return candidates
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-}
-
-function buildTargetAddressCandidates(target = {}) {
-  const candidates = [
-    target.fullAddress,
-    [target.address, target.city, target.state, target.postalCode, target.country]
-      .filter(Boolean)
-      .join(", "),
-    [target.address, target.city, target.state, target.country].filter(Boolean).join(", "),
-    [target.address, target.city, target.country].filter(Boolean).join(", ")
-  ];
-
-  return candidates
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-}
-
 function isExactBusinessNameMatch(contact, businessName) {
   return normalizeValue(contact?.companyName) === normalizeValue(businessName);
 }
 
-function isExactAddressMatch(contact, target) {
-  const contactCandidates = buildContactFullAddressCandidates(contact);
-  const targetCandidates = buildTargetAddressCandidates(target);
+function isStreetAddressMatch(contact, target) {
+  const targetStreetAddress = String(target?.address || "").trim();
+  const contactStreetAddress = String(getStreetAddress(contact) || "").trim();
 
-  if (targetCandidates.length > 0) {
-    const matchedByAddressCandidates = targetCandidates.some((targetCandidate) =>
-      contactCandidates.some((candidate) => isEquivalentAddress(candidate, targetCandidate))
-    );
-
-    if (matchedByAddressCandidates) {
-      return true;
-    }
+  if (!targetStreetAddress || !contactStreetAddress) {
+    return false;
   }
 
-  return (
-    normalizeValue(getStreetAddress(contact)) === normalizeValue(target.address) &&
-    normalizeValue(getCity(contact)) === normalizeValue(target.city)
-    // normalizeValue(getCountry(contact)) === normalizeValue(target.country)
-  );
+  return isEquivalentAddress(contactStreetAddress, targetStreetAddress);
+}
+
+function isCityMatch(contact, target) {
+  const targetCity = normalizeValue(target?.city);
+
+  if (!targetCity) {
+    return false;
+  }
+
+  return normalizeValue(getCity(contact)) === targetCity;
 }
 
 function extractContacts(searchResponseData) {
@@ -413,16 +346,52 @@ export async function searchContactsByAddress(criteria) {
     page += 1;
   }
 
-  const exactMatches = contacts.filter((contact) => isExactAddressMatch(contact, criteria));
+  const shouldCheckStreetAddress = Boolean(String(criteria.address || "").trim());
+  const shouldCheckCity = Boolean(String(criteria.city || "").trim());
+
+  const streetMatches = [];
+  const cityMatches = [];
+  const bothMatches = [];
+
+  for (const contact of contacts) {
+    const streetMatch = shouldCheckStreetAddress ? isStreetAddressMatch(contact, criteria) : false;
+    const cityMatch = shouldCheckCity ? isCityMatch(contact, criteria) : false;
+
+    if (streetMatch) {
+      streetMatches.push(contact);
+    }
+
+    if (cityMatch) {
+      cityMatches.push(contact);
+    }
+
+    if (streetMatch && cityMatch) {
+      bothMatches.push(contact);
+    }
+  }
+
+  const addressMatches = shouldCheckStreetAddress && shouldCheckCity
+    ? bothMatches
+    : shouldCheckStreetAddress
+      ? streetMatches
+      : shouldCheckCity
+        ? cityMatches
+        : [];
 
   console.info("[duplicate-business-address] GHL search response", {
     locationId: criteria.locationId,
     totalContactsScanned: contacts.length,
-    exactMatches: exactMatches.length,
-    sampleAddress: buildFullAddress(exactMatches[0] || {})
+    streetMatches: streetMatches.length,
+    cityMatches: cityMatches.length,
+    addressMatches: addressMatches.length,
+    sampleAddress: buildFullAddress(addressMatches[0] || {})
   });
 
-  return exactMatches;
+  return {
+    streetMatches,
+    cityMatches,
+    addressMatches
+  };
 }
 
 export async function getAllContacts(criteria) {

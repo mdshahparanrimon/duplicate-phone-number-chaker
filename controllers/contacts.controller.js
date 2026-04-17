@@ -4,8 +4,10 @@ import {
 } from "../middleware/auth.middleware.js";
 import {
   hasBusinessName,
+  hasCity,
   hasFullBusinessAddress,
   hasPhoneOrEmail,
+  hasStreetAddress,
   normalizeCheckDuplicateBusinessPayload,
   normalizeCheckDuplicatePhoneEmailPayload
 } from "../validations/contacts.validation.js";
@@ -262,6 +264,8 @@ export async function checkDuplicateBusinessController(req, res) {
   const payload = normalizeCheckDuplicateBusinessPayload(req.body || {});
   const shouldCheckBusinessName = hasBusinessName(payload);
   const shouldCheckAddress = hasFullBusinessAddress(payload);
+  const shouldCheckStreetAddress = hasStreetAddress(payload);
+  const shouldCheckCity = hasCity(payload);
 
   if (!shouldCheckBusinessName && !shouldCheckAddress) {
     return res.status(200).json({
@@ -269,12 +273,16 @@ export async function checkDuplicateBusinessController(req, res) {
       count: 0,
       businessNameStatus: "null",
       addressStatus: "null",
+      streetAddressStatus: "null",
+      cityStatus: "null",
+      streetAddressCount: 0,
+      cityCount: 0,
       address: []
     });
   }
 
   try {
-    const [businessNameMatches, addressMatches] = await Promise.all([
+    const [businessNameMatches, addressSearchResult] = await Promise.all([
       shouldCheckBusinessName
         ? searchContactsByBusinessName({
             ...payload,
@@ -288,22 +296,47 @@ export async function checkDuplicateBusinessController(req, res) {
             locationId: context.locationId,
             apiKey: context.apiKey
           })
-        : Promise.resolve([])
+        : Promise.resolve({
+            streetMatches: [],
+            cityMatches: [],
+            addressMatches: []
+          })
     ]);
 
     const filteredBusinessNameMatches = excludeCurrentContact(businessNameMatches, payload.id);
-    const filteredAddressMatches = excludeCurrentContact(addressMatches, payload.id);
+    const filteredStreetAddressMatches = deduplicateContacts(
+      excludeCurrentContact(addressSearchResult.streetMatches || [], payload.id)
+    );
+    const filteredCityMatches = deduplicateContacts(
+      excludeCurrentContact(addressSearchResult.cityMatches || [], payload.id)
+    );
+    const filteredAddressMatches = deduplicateContacts(
+      excludeCurrentContact(addressSearchResult.addressMatches || [], payload.id)
+    );
     const allMatches = deduplicateContacts([
       ...filteredBusinessNameMatches,
-      ...filteredAddressMatches
+      ...filteredStreetAddressMatches,
+      ...filteredCityMatches
     ]);
 
     const businessNameStatus = shouldCheckBusinessName
       ? (filteredBusinessNameMatches.length > 0 ? "duplicate" : "unique")
       : "null";
-    const addressStatus = shouldCheckAddress
-      ? (filteredAddressMatches.length > 0 ? "duplicate" : "unique")
+    const streetAddressStatus = shouldCheckAddress
+      ? (shouldCheckStreetAddress
+          ? (filteredStreetAddressMatches.length > 0 ? "duplicate" : "unique")
+          : "null")
       : "null";
+    const cityStatus = shouldCheckAddress
+      ? (shouldCheckCity ? (filteredCityMatches.length > 0 ? "duplicate" : "unique") : "null")
+      : "null";
+    const addressStatus = shouldCheckAddress
+      ? (streetAddressStatus === "duplicate" && cityStatus === "duplicate"
+          ? "duplicate"
+          : "unique")
+      : "null";
+    const streetAddressCount = shouldCheckStreetAddress ? filteredStreetAddressMatches.length : 0;
+    const cityCount = shouldCheckCity ? filteredCityMatches.length : 0;
 
     const addressItems = shouldCheckAddress
       ? deduplicateAddressItems(
@@ -318,6 +351,10 @@ export async function checkDuplicateBusinessController(req, res) {
       count: allMatches.length,
       businessNameStatus,
       addressStatus,
+      streetAddressStatus,
+      cityStatus,
+      streetAddressCount,
+      cityCount,
       address: addressItems
     });
   } catch (error) {
