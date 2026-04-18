@@ -81,6 +81,26 @@
         "successStatusCodes": [200],
         "requiredResponseKeys": ["status", "count", "contacts", "page", "pageLimit", "total"]
       }
+    },
+    {
+      "name": "checkObjectAddresses",
+      "method": "POST",
+      "path": "/api/check-object-addresses",
+      "headers": {
+        "locationId": "YOUR_LOCATION_ID",
+        "accessKey": "YOUR_GHL_API_KEY",
+        "objectKey": "property",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "includeBusinessName": true,
+        "pageLimit": 100,
+        "maxPages": 200
+      },
+      "expected": {
+        "successStatusCodes": [200],
+        "requiredResponseKeys": ["success", "data"]
+      }
     }
   ],
   "negativeTests": [

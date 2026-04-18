@@ -17,12 +17,15 @@ Status values:
 ├── index.js
 ├── api/
 │   ├── check-duplicate.js
+│   ├── check-object-addresses.js
 │   └── get-all-contacts.js
 ├── controllers/
 │   └── contacts.controller.js
 ├── services/
+│   ├── ghl-objects.service.js
 │   └── ghl-contacts.service.js
 ├── validations/
+│   ├── object-address.validation.js
 │   └── contacts.validation.js
 ├── middleware/
 │   └── auth.middleware.js
@@ -195,11 +198,49 @@ Response shape:
 }
 ```
 
+### 5) Check Object Address Status (Custom Object)
+
+`POST /api/check-object-addresses`
+
+This endpoint checks whether a street address exists in a custom object and returns only a boolean status.
+
+Headers (required):
+
+| Header | Required | Description |
+|---|---|---|
+| `x-api-key` | Yes | Your app access key |
+| `x-location-id` | Yes | GHL sub-account/location ID |
+| `x-ghl-api-key` | Yes | GHL API token |
+| `x-object-id` | Yes | GHL custom object identifier |
+| `Content-Type` | Yes | `application/json` |
+
+Request body (required):
+
+```json
+{
+  "id": "{{contact.id}}",
+  "address": "{{contact.address1}}"
+}
+```
+
+Response shape:
+
+```json
+{
+  "status": true
+}
+```
+
+Rules:
+- `id` and `address` are both mandatory in body.
+- `address` is checked against custom object address values (street address matching).
+- Success response always returns only `{ "status": true|false }`.
+
 ## Error Responses
 
 | Status | Meaning |
 |---|---|
-| `400` | Missing required headers (`x-location-id`, `x-ghl-api-key`) |
+| `400` | Missing required headers/body fields (including `x-object-id`, `id`, `address`) |
 | `401` | Invalid `x-api-key` |
 | `405` | Method not allowed |
 | `502` | GHL request/network failure |
