@@ -1,5 +1,8 @@
 import axios from "axios";
 import { GhlServiceError } from "./ghl-contacts.service.js";
+import { retryAsync } from "../utils/retry.js";
+import { logger } from "../utils/logger.js";
+import { normalizePropertyAddress } from "../utils/address.js";
 
 const GHL_BASE_URL = process.env.GHL_BASE_URL || "https://services.leadconnectorhq.com";
 const GHL_VERSION = "2021-07-28";
@@ -8,6 +11,12 @@ const DEFAULT_PAGE_LIMIT = 100;
 const DEFAULT_MAX_PAGES = Math.min(
   Number.parseInt(process.env.GHL_OBJECT_MAX_PAGES || "200", 10) || 200,
   500
+);
+
+const PROPERTY_WORKFLOW_TIMEOUT_MS = Number.parseInt(process.env.GHL_TIMEOUT_MS || "5000", 10) || 5000;
+const PROPERTY_WORKFLOW_RETRY_ATTEMPTS = Math.min(
+  Math.max(Number.parseInt(process.env.GHL_RETRY_ATTEMPTS || "3", 10) || 3, 1),
+  3
 );
 
 function toErrorMessage(error, fallback = "Unknown GHL error") {
@@ -94,6 +103,95 @@ function buildHeaders(apiKey) {
     Version: GHL_VERSION,
     "Content-Type": "application/json"
   };
+}
+
+function extractRecordId(entity = {}) {
+  const candidates = [
+    entity?.id,
+    entity?._id,
+    entity?.recordId,
+    entity?.objectId,
+    entity?.record?.id,
+    entity?.record?._id,
+    entity?.record?.recordId,
+    entity?.data?.id,
+    entity?.data?._id,
+    entity?.data?.recordId,
+    entity?.data?.record?.id,
+    entity?.data?.record?._id,
+    entity?.data?.record?.recordId
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeText(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return "";
+}
+
+function isRetryableAxiosError(error) {
+  if (!error?.response) {
+    return true;
+  }
+
+  const statusCode = Number(error.response?.status || 0);
+  return statusCode === 429 || statusCode >= 500;
+}
+
+function resolveWorkflowStatusCode(error) {
+  if (error?.response) {
+    const statusCode = Number(error.response.status || 0);
+
+    if (statusCode === 400 || statusCode === 404 || statusCode === 422) {
+      return 400;
+    }
+
+    if (statusCode === 401 || statusCode === 403) {
+      return 401;
+    }
+
+    return 502;
+  }
+
+  if (error?.code === "ECONNABORTED") {
+    return 504;
+  }
+
+  return 502;
+}
+
+function toWorkflowServiceError(error, fallbackMessage) {
+  return new GhlServiceError(
+    toErrorMessage(error, fallbackMessage),
+    resolveWorkflowStatusCode(error)
+  );
+}
+
+function buildPropertyName(name) {
+  const normalizedName = normalizeText(name);
+  return normalizedName ? `${normalizedName}'s Property` : "Property";
+}
+
+async function requestWithRetry({ request, requestId, operation, objectId, contactId }) {
+  return retryAsync(request, {
+    attempts: PROPERTY_WORKFLOW_RETRY_ATTEMPTS,
+    delayMs: 300,
+    shouldRetry: isRetryableAxiosError,
+    onRetry: (error, attempt, nextAttempt) => {
+      logger.warn("associate_contact_property.retry", {
+        requestId,
+        operation,
+        objectId,
+        contactId,
+        currentAttempt: attempt,
+        nextAttempt,
+        message: toErrorMessage(error)
+      });
+    }
+  });
 }
 
 function extractObjectSchemaPayload(rawData) {
@@ -504,4 +602,306 @@ export async function checkObjectAddressExists({ apiKey, locationId, objectId, i
     targetAddress: normalizedAddress,
     sourceId: normalizeText(id)
   });
+}
+
+export async function searchPropertyRecordByAddress({
+  apiKey,
+  locationId,
+  objectId,
+  normalizedAddress,
+  requestId
+}) {
+  const normalizedObjectId = normalizeText(objectId);
+  const normalizedLocationId = normalizeText(locationId);
+  const targetAddress = normalizeText(normalizedAddress);
+
+  if (!normalizedObjectId) {
+    throw new GhlServiceError("Missing required header: x-object-id", 400);
+  }
+
+  if (!targetAddress) {
+    throw new GhlServiceError("Missing required body field: address", 400);
+  }
+
+  const endpoint = `${GHL_BASE_URL}/objects/${encodeURIComponent(normalizedObjectId)}/records/search`;
+  const payload = {
+    locationId: normalizedLocationId,
+    filters: [
+      {
+        fieldKey: "property_address",
+        operator: "eq",
+        value: targetAddress
+      }
+    ]
+  };
+
+  let response;
+
+  try {
+    response = await requestWithRetry({
+      request: () =>
+        axios.post(endpoint, payload, {
+          timeout: PROPERTY_WORKFLOW_TIMEOUT_MS,
+          headers: buildHeaders(apiKey)
+        }),
+      requestId,
+      operation: "search_property",
+      objectId: normalizedObjectId
+    });
+  } catch (error) {
+    logger.error("associate_contact_property.search_error", {
+      requestId,
+      locationId: normalizedLocationId,
+      objectId: normalizedObjectId,
+      message: toErrorMessage(error)
+    });
+    throw toWorkflowServiceError(error, "Failed to search property record");
+  }
+
+  const records = extractRecords(response.data || {});
+  let propertyId = "";
+
+  for (const record of records) {
+    const candidateRecordId = extractRecordId(record);
+    if (candidateRecordId) {
+      propertyId = candidateRecordId;
+      break;
+    }
+  }
+
+  if (!propertyId) {
+    propertyId = extractRecordId(response.data || {});
+  }
+
+  if (records.length > 0 && !propertyId) {
+    throw new GhlServiceError("Property record ID is missing in search response", 502);
+  }
+
+  const existing = Boolean(propertyId);
+
+  logger.info("associate_contact_property.search_result", {
+    requestId,
+    locationId: normalizedLocationId,
+    objectId: normalizedObjectId,
+    recordCount: records.length,
+    existing,
+    propertyId: propertyId || null
+  });
+
+  return {
+    existing,
+    propertyId
+  };
+}
+
+export async function createPropertyRecord({
+  apiKey,
+  locationId,
+  objectId,
+  normalizedAddress,
+  name,
+  requestId
+}) {
+  const normalizedObjectId = normalizeText(objectId);
+  const normalizedLocationId = normalizeText(locationId);
+  const targetAddress = normalizeText(normalizedAddress);
+
+  if (!normalizedObjectId) {
+    throw new GhlServiceError("Missing required header: x-object-id", 400);
+  }
+
+  if (!targetAddress) {
+    throw new GhlServiceError("Missing required body field: address", 400);
+  }
+
+  const endpoint = `${GHL_BASE_URL}/objects/${encodeURIComponent(normalizedObjectId)}/records`;
+  const payload = {
+    locationId: normalizedLocationId,
+    properties: {
+      property_address: targetAddress,
+      property_name: buildPropertyName(name)
+    }
+  };
+
+  let response;
+
+  try {
+    response = await requestWithRetry({
+      request: () =>
+        axios.post(endpoint, payload, {
+          timeout: PROPERTY_WORKFLOW_TIMEOUT_MS,
+          headers: buildHeaders(apiKey)
+        }),
+      requestId,
+      operation: "create_property",
+      objectId: normalizedObjectId
+    });
+  } catch (error) {
+    logger.error("associate_contact_property.create_error", {
+      requestId,
+      locationId: normalizedLocationId,
+      objectId: normalizedObjectId,
+      message: toErrorMessage(error)
+    });
+    throw toWorkflowServiceError(error, "Failed to create property record");
+  }
+
+  const propertyId = extractRecordId(response.data || {});
+
+  if (!propertyId) {
+    throw new GhlServiceError("Property record ID is missing in create response", 502);
+  }
+
+  logger.info("associate_contact_property.created_property", {
+    requestId,
+    locationId: normalizedLocationId,
+    objectId: normalizedObjectId,
+    propertyId
+  });
+
+  return propertyId;
+}
+
+export async function createPropertyContactAssociation({
+  apiKey,
+  propertyRecordId,
+  contactId,
+  requestId
+}) {
+  const normalizedPropertyRecordId = normalizeText(propertyRecordId);
+  const normalizedContactId = normalizeText(contactId);
+
+  if (!normalizedPropertyRecordId) {
+    throw new GhlServiceError("Property record ID is required for association", 400);
+  }
+
+  if (!normalizedContactId) {
+    throw new GhlServiceError("Contact ID is required for association", 400);
+  }
+
+  const endpoint = `${GHL_BASE_URL}/associations/`;
+  const payload = {
+    fromObjectId: normalizedPropertyRecordId,
+    toObjectId: normalizedContactId,
+    fromObjectType: "custom_object",
+    toObjectType: "contact"
+  };
+
+  try {
+    await requestWithRetry({
+      request: () =>
+        axios.post(endpoint, payload, {
+          timeout: PROPERTY_WORKFLOW_TIMEOUT_MS,
+          headers: buildHeaders(apiKey)
+        }),
+      requestId,
+      operation: "create_association",
+      objectId: normalizedPropertyRecordId,
+      contactId: normalizedContactId
+    });
+
+    logger.info("associate_contact_property.association_result", {
+      requestId,
+      propertyId: normalizedPropertyRecordId,
+      contactId: normalizedContactId,
+      associated: true,
+      alreadyAssociated: false
+    });
+
+    return {
+      associated: true,
+      alreadyAssociated: false
+    };
+  } catch (error) {
+    if (error?.response?.status === 409) {
+      logger.info("associate_contact_property.association_result", {
+        requestId,
+        propertyId: normalizedPropertyRecordId,
+        contactId: normalizedContactId,
+        associated: true,
+        alreadyAssociated: true
+      });
+
+      return {
+        associated: true,
+        alreadyAssociated: true
+      };
+    }
+
+    logger.error("associate_contact_property.association_error", {
+      requestId,
+      propertyId: normalizedPropertyRecordId,
+      contactId: normalizedContactId,
+      message: toErrorMessage(error)
+    });
+
+    throw toWorkflowServiceError(error, "Failed to create association");
+  }
+}
+
+export async function associateContactWithProperty({
+  apiKey,
+  locationId,
+  objectId,
+  contactId,
+  name,
+  address,
+  city,
+  state,
+  requestId
+}) {
+  const normalizedContactId = normalizeText(contactId);
+  const normalizedObjectId = normalizeText(objectId);
+  const normalizedLocationId = normalizeText(locationId);
+  const normalizedAddress = normalizePropertyAddress({
+    address,
+    city,
+    state
+  });
+
+  if (!normalizedContactId) {
+    throw new GhlServiceError("Missing required body field: contactId/id", 400);
+  }
+
+  if (!normalizedObjectId) {
+    throw new GhlServiceError("Missing required header: x-object-id", 400);
+  }
+
+  if (!normalizedAddress) {
+    throw new GhlServiceError("Missing required body field: address", 400);
+  }
+
+  const searchResult = await searchPropertyRecordByAddress({
+    apiKey,
+    locationId: normalizedLocationId,
+    objectId: normalizedObjectId,
+    normalizedAddress,
+    requestId
+  });
+
+  let propertyId = searchResult.propertyId;
+  const existing = Boolean(searchResult.existing && propertyId);
+
+  if (!propertyId) {
+    propertyId = await createPropertyRecord({
+      apiKey,
+      locationId: normalizedLocationId,
+      objectId: normalizedObjectId,
+      normalizedAddress,
+      name,
+      requestId
+    });
+  }
+
+  await createPropertyContactAssociation({
+    apiKey,
+    propertyRecordId: propertyId,
+    contactId: normalizedContactId,
+    requestId
+  });
+
+  return {
+    propertyId,
+    existing
+  };
 }

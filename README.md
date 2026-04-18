@@ -17,6 +17,7 @@ Status values:
 ├── index.js
 ├── api/
 │   ├── check-duplicate.js
+│   ├── associate-contact-property.js
 │   ├── check-object-addresses.js
 │   └── get-all-contacts.js
 ├── controllers/
@@ -25,12 +26,16 @@ Status values:
 │   ├── ghl-objects.service.js
 │   └── ghl-contacts.service.js
 ├── validations/
+│   ├── associate-property.validation.js
 │   ├── object-address.validation.js
 │   └── contacts.validation.js
 ├── middleware/
 │   └── auth.middleware.js
 ├── utils/
-│   └── address.js
+│   ├── address.js
+│   ├── logger.js
+│   └── retry.js
+├── .env.example
 ├── ghl-route-test-pack.json
 ├── package.json
 ```
@@ -57,6 +62,13 @@ ACCESS_KEY_MAP_JSON={"loc_1":"tenant_key_1"}
 
 # Optional override
 GHL_BASE_URL=https://services.leadconnectorhq.com
+
+# Workflow timeout/retry controls for property association endpoint
+GHL_TIMEOUT_MS=5000
+GHL_RETRY_ATTEMPTS=3
+
+# Existing scan endpoint paging cap
+GHL_OBJECT_MAX_PAGES=200
 ```
 
 ## Required Headers For Every URL
@@ -236,6 +248,81 @@ Rules:
 - `address` is checked against custom object address values (street address matching).
 - Success response always returns only `{ "status": true|false }`.
 
+### 6) Associate Contact To Property (Custom Object)
+
+`POST /api/associate-contact-property`
+
+This endpoint searches a custom-object property record by normalized address. If not found, it creates the property record and then associates the property with a contact.
+
+Headers (required):
+
+| Header | Required | Description |
+|---|---|---|
+| `x-api-key` | Yes | Your app access key |
+| `x-location-id` | Yes | GHL sub-account/location ID |
+| `x-ghl-api-key` | Yes | GHL API token |
+| `x-object-id` | Yes | GHL custom object schemaKey |
+| `Content-Type` | Yes | `application/json` |
+
+Request body (supports new + legacy):
+
+```json
+{
+  "contactId": "contact_123",
+  "name": "John Doe",
+  "address": "19671 Beach Blvd, Suite 103",
+  "city": "Huntington Beach",
+  "state": "CA"
+}
+```
+
+Legacy-compatible body:
+
+```json
+{
+  "id": "contact_123",
+  "address": "19671 Beach Blvd, Suite 103"
+}
+```
+
+Success response:
+
+```json
+{
+  "success": true,
+  "status": "associated",
+  "propertyId": "rec_123",
+  "existing": false
+}
+```
+
+Failure response:
+
+```json
+{
+  "success": false,
+  "error": "message"
+}
+```
+
+Rules:
+- Address normalization uses lowercase + trim + comma removal.
+- Search/create/association calls retry up to 3 attempts on transient upstream failures.
+- Per-upstream request timeout defaults to 5 seconds (`GHL_TIMEOUT_MS`).
+- Logs include request, search result, created property, association result, and errors.
+
+### 7) Health Check
+
+`GET /health`
+
+Response:
+
+```json
+{
+  "status": "ok"
+}
+```
+
 ## Error Responses
 
 | Status | Meaning |
@@ -243,7 +330,9 @@ Rules:
 | `400` | Missing required headers/body fields (including `x-object-id`, `id`, `address`) |
 | `401` | Invalid `x-api-key` |
 | `405` | Method not allowed |
+| `500` | Internal server error |
 | `502` | GHL request/network failure |
+| `504` | GHL upstream request timed out |
 
 ## GHL Webhook Setup
 

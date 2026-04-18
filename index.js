@@ -2,6 +2,7 @@ import express from "express";
 import handler from "./api/check-duplicate.js";
 import getAllContactsHandler from "./api/get-all-contacts.js";
 import checkObjectAddressesHandler from "./api/check-object-addresses.js";
+import associateContactPropertyHandler from "./api/associate-contact-property.js";
 import { requireAuthHeaders } from "./middleware/auth.middleware.js";
 import {
   checkDuplicateBusinessController,
@@ -19,6 +20,10 @@ app.post("/api/check-duplicate-contact", requireAuthHeaders, checkDuplicatePhone
 app.post("/api/check-duplicate-business", requireAuthHeaders, checkDuplicateBusinessController);
 app.post("/api/get-all-contacts", requireAuthHeaders, getAllContactsHandler);
 app.post("/api/check-object-addresses", requireAuthHeaders, checkObjectAddressesHandler);
+app.post("/api/associate-contact-property", requireAuthHeaders, associateContactPropertyHandler);
+app.get("/health", (req, res) => {
+  return res.status(200).json({ status: "ok" });
+});
 
 const PORT = process.env.PORT || 8000;
 app.listen(PORT, () => {
