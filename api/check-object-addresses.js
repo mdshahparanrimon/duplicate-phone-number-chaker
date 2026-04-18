@@ -1,6 +1,10 @@
 import { GhlServiceError } from "../services/ghl-contacts.service.js";
 import { checkObjectAddressExists } from "../services/ghl-objects.service.js";
 import {
+  resolveAuthContextFromRequest,
+  validateRequestAuthContext
+} from "../middleware/auth.middleware.js";
+import {
   normalizeCheckObjectAddressPayload,
   validateCheckObjectAddressPayload
 } from "../validations/object-address.validation.js";
@@ -23,6 +27,12 @@ export default async function checkObjectAddressesHandler(req, res) {
     return res.status(400).json({ message: "Missing required header: x-object-id" });
   }
 
+  const context = resolveAuthContextFromRequest(req, { allowBodyFallback: false });
+  const authResult = validateRequestAuthContext(context);
+  if (!authResult.valid) {
+    return res.status(authResult.statusCode).json({ message: authResult.message });
+  }
+
   const payload = normalizeCheckObjectAddressPayload(req.body || {});
   const payloadValidation = validateCheckObjectAddressPayload(payload);
 
@@ -34,8 +44,8 @@ export default async function checkObjectAddressesHandler(req, res) {
 
   try {
     const status = await checkObjectAddressExists({
-      apiKey: req.authContext.apiKey,
-      locationId: req.authContext.locationId,
+      apiKey: context.apiKey,
+      locationId: context.locationId,
       objectId,
       id: payload.id,
       address: payload.address
