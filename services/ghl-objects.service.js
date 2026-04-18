@@ -626,9 +626,11 @@ export async function searchPropertyRecordByAddress({
   const endpoint = `${GHL_BASE_URL}/objects/${encodeURIComponent(normalizedObjectId)}/records/search`;
   const payload = {
     locationId: normalizedLocationId,
+    page: 1,
+    pageLimit: DEFAULT_PAGE_LIMIT,
     filters: [
       {
-        fieldKey: "property_address",
+        field: "property_address",
         operator: "eq",
         value: targetAddress
       }
